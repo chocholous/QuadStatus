@@ -31,6 +31,9 @@ jobs:
 
   codeql:
     runs-on: xcode-27
+    # As of November 2026, CodeQL's Swift tracer can't follow a build with Xcode 27
+    # (SwiftPM's manifest fails with "Bad CPU type"). Keep trying, without failing CI.
+    continue-on-error: true
     permissions:
       contents: read
       security-events: write   # CodeQL uploads its results
