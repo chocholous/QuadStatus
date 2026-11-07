@@ -25,7 +25,7 @@ final class NetworkMonitor {
     var onChange: (() -> Void)?
 
     private let monitor = NWPathMonitor()
-    private let queue = DispatchQueue(label: "io.github.zhenweiding-dev.duostatus.network")
+    private let queue = DispatchQueue(label: "io.github.chocholous.quadstatus.network")
     private var path: NWPath?
 
     init() {
@@ -103,7 +103,7 @@ final class NetworkMonitor {
     /// which points into the tunnel while a VPN is up.
     private static func wifiRouter() -> String? {
         guard let bsd = CWWiFiClient.shared().interface()?.interfaceName,
-              let store = SCDynamicStoreCreate(nil, "DuoStatus" as CFString, nil, nil),
+              let store = SCDynamicStoreCreate(nil, "QuadStatus" as CFString, nil, nil),
               let keys = SCDynamicStoreCopyKeyList(store, "State:/Network/Service/.*/IPv4" as CFString)
                 as? [CFString] else { return nil }
         for key in keys {

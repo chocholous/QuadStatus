@@ -1,13 +1,13 @@
 #!/bin/bash
-# Builds DuoStatus.app. Pass --install to drop it in ~/Applications, start it at login and launch it.
+# Builds QuadStatus.app. Pass --install to drop it in ~/Applications, start it at login and launch it.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-NAME="DuoStatus"
+NAME="QuadStatus"
 OUT="build.noindex"
 APP="$OUT/$NAME.app"
-BUNDLE_ID="io.github.zhenweiding-dev.duostatus"
-VERSION="1.0.0"
+BUNDLE_ID="io.github.chocholous.quadstatus"
+VERSION="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
 
 # Universal, so the same bundle runs on Apple silicon and Intel.
 ARCHS=(--arch arm64 --arch x86_64)
@@ -17,11 +17,22 @@ if [[ "${1:-}" == "--icon" ]]; then
   SET="$(mktemp -d)/AppIcon.iconset"
   swiftc -O Sources/$NAME/StatusIcon.swift Sources/$NAME/BatteryMonitor.swift \
       Sources/$NAME/VolumeMonitor.swift Sources/$NAME/NetworkMonitor.swift \
-      Tools/GenerateIcon.swift -o /tmp/duostatus-icon
-  /tmp/duostatus-icon "$SET"
+      Tools/GenerateIcon.swift -o /tmp/quadstatus-icon
+  /tmp/quadstatus-icon "$SET"
   iconutil -c icns "$SET" -o Resources/AppIcon.icns
-  rm -rf "$(dirname "$SET")" /tmp/duostatus-icon
+  rm -rf "$(dirname "$SET")" /tmp/quadstatus-icon
   echo "Done: Resources/AppIcon.icns"
+  exit 0
+fi
+
+if [[ "${1:-}" == "--previews" ]]; then
+  echo "==> Rendering docs/preview/*.png"
+  TOOL="$(mktemp -d)/render-previews"
+  swiftc -O Sources/$NAME/StatusIcon.swift Sources/$NAME/BatteryMonitor.swift \
+      Sources/$NAME/VolumeMonitor.swift Sources/$NAME/NetworkMonitor.swift \
+      Tools/RenderPreviews.swift -o "$TOOL"
+  "$TOOL" docs/preview
+  /usr/bin/trash "$(dirname "$TOOL")"
   exit 0
 fi
 
@@ -39,8 +50,6 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # (.metadata_never_index only works at a volume root, not per directory.)
 cp "$BIN" "$APP/Contents/MacOS/$NAME"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-mkdir -p "$APP/Contents/Library/LaunchAgents"
-cp Resources/io.github.zhenweiding-dev.duostatus.plist "$APP/Contents/Library/LaunchAgents/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
 echo "==> Signing (ad-hoc; fine for local use)"
@@ -76,7 +85,8 @@ if [[ "${1:-}" == "--install" ]]; then
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
       -f "$DEST" || true
   sleep 1
-  open "$DEST" || { sleep 2; open "$DEST"; }
+  # --register-login has usually started it already (RunAtLoad).
+  pgrep -x "$NAME" >/dev/null || open "$DEST" || { sleep 2; open "$DEST"; }
   echo "Launched — look at the right side of the menu bar."
 else
   echo "Done: $APP"

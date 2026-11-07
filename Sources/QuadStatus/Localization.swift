@@ -141,7 +141,7 @@ extension Strings {
         language: "Language",
         followSystem: "System",
         openAtLogin: "Open at Login",
-        quit: "Quit DuoStatus",
+        quit: "Quit QuadStatus",
         loginItemFailed: "Couldn't change the login item",
         widthSamples: [
             "100% · Health 100% · 9999 cycles",
@@ -185,7 +185,7 @@ extension Strings {
         language: "语言",
         followSystem: "跟随系统",
         openAtLogin: "登录时启动",
-        quit: "退出 DuoStatus",
+        quit: "退出 QuadStatus",
         loginItemFailed: "无法修改登录项",
         widthSamples: [
             "100% · 健康度 100% · 循环 9999 次",

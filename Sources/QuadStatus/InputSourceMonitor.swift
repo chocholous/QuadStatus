@@ -18,15 +18,16 @@ final class InputSourceMonitor {
     var onChange: (() -> Void)?
 
     /// The layout you normally type in shows nothing in the menu bar; only a
-    /// switch away from it does. Override with
-    /// `defaults write io.github.zhenweiding-dev.duostatus defaultKeyboardLanguage -string en`
-    static var defaultLanguage: String {
-        UserDefaults.standard.string(forKey: "defaultKeyboardLanguage") ?? "cs"
-    }
+    /// switch away from it does. That is the first layout enabled in System
+    /// Settings, unless overridden with
+    /// `defaults write io.github.chocholous.quadstatus defaultKeyboardLanguage -string en`
+    /// Resolved on every layout switch rather than on every redraw: the badge
+    /// redraws many times a second while it pulses.
+    private(set) var defaultLanguage = ""
 
     /// The current layout, or nil while it is the default one.
     var shown: InputSource? {
-        current.flatMap { $0.language == Self.defaultLanguage ? nil : $0 }
+        current.flatMap { $0.language == defaultLanguage ? nil : $0 }
     }
 
     init() {
@@ -38,6 +39,8 @@ final class InputSourceMonitor {
     }
 
     func refresh() {
+        defaultLanguage = UserDefaults.standard.string(forKey: "defaultKeyboardLanguage")
+            ?? Self.list().first.map { Self.describe($0).language } ?? ""
         let new = Self.describe(TISCopyCurrentKeyboardInputSource().takeRetainedValue())
         guard new != current else { return }
         current = new

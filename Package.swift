@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "DuoStatus",
+    name: "QuadStatus",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "DuoStatus",
-            path: "Sources/DuoStatus",
+            name: "QuadStatus",
+            path: "Sources/QuadStatus",
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]

@@ -9,7 +9,7 @@ enum NordVPN {
     static let bundleID = "com.nordvpn.macos"
 
     /// Countries offered in the menu. Override with
-    /// `defaults write io.github.zhenweiding-dev.duostatus vpnCountries -array cz us de gb`
+    /// `defaults write io.github.chocholous.quadstatus vpnCountries -array cz us de gb`
     private static let countriesKey = "vpnCountries"
     private static let defaultCountries = ["cz", "us", "de", "gb"]
 

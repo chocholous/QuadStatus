@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"   # weekly, so CodeQL picks up new queries
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Building needs Xcode 27; GitHub ships it on its own image label.
+    runs-on: xcode-27
+    permissions:
+      contents: read
+      security-events: write   # CodeQL uploads its results
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: swift
+          build-mode: manual
+          queries: security-and-quality
+
+      - name: Build the app
+        run: ./build.sh
+
+      - name: Check the bundle
+        run: |
+          codesign --verify --strict --verbose=2 build.noindex/QuadStatus.app
+          plutil -lint build.noindex/QuadStatus.app/Contents/Info.plist
+          lipo -info build.noindex/QuadStatus.app/Contents/MacOS/QuadStatus
+
+      - name: Run CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck build.sh Tools/release.sh

@@ -5,7 +5,7 @@ if CommandLine.arguments.contains("--login-status") {
     exit(0)
 }
 
-// `DuoStatus --register-login` (build.sh --install): start at login from this copy.
+// `QuadStatus --register-login` (build.sh --install): start at login from this copy.
 if CommandLine.arguments.contains("--register-login") {
     do { try LoginAgent.enable() } catch { print("register failed: \(error)"); exit(1) }
     exit(0)

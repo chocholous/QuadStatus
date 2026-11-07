@@ -1,5 +1,5 @@
 # Build output. The .noindex suffix keeps Spotlight from indexing these —
-# without it every rebuild adds another DuoStatus.app to search results.
+# without it every rebuild adds another QuadStatus.app to search results.
 .build.noindex/
 build.noindex/
 

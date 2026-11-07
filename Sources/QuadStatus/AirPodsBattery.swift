@@ -20,7 +20,7 @@ struct BudsBattery: Equatable {
 
 enum AirPodsBattery {
     /// How long the label stays next to the badge after the headset connects.
-    /// Override with `defaults write io.github.zhenweiding-dev.duostatus airPodsBatterySeconds -float 8`
+    /// Override with `defaults write io.github.chocholous.quadstatus airPodsBatterySeconds -float 8`
     static var displaySeconds: TimeInterval {
         let v = UserDefaults.standard.double(forKey: "airPodsBatterySeconds")
         return v > 0 ? v : 5
