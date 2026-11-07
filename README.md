@@ -7,11 +7,6 @@ instead of a row of separate icons. The details live in its menu.
   <img src="docs/preview/overview.png" width="420" alt="The QuadStatus badge in a light and a dark menu bar">
 </p>
 
-QuadStatus started as a fork of [DuoStatus](https://github.com/zhenweiding-dev/DuoStatus)
-by Zhenwei Ding, which brought the iPhone Duo's "everything in one circle" status cluster
-to the Mac. It adds headphones, VPN, keyboard layout, system load, a hover tip and a
-login agent that starts with the session.
-
 ## Install
 
 ```bash
@@ -137,4 +132,4 @@ Building needs Xcode 27.
 
 ## License
 
-MIT. Copyright © 2026 Zhenwei Ding (DuoStatus) and Pavel Chocholouš.
+MIT, see [LICENSE](LICENSE). Based on [DuoStatus](https://github.com/zhenweiding-dev/DuoStatus) by Zhenwei Ding.

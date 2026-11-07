@@ -34,7 +34,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 Pavel Chocholouš, based on DuoStatus by Zhenwei Ding. MIT licensed.</string>
+	<string>Copyright © 2026 Pavel Chocholouš. MIT licensed.</string>
 	<key>NSLocationUsageDescription</key>
 	<string>macOS only reveals Wi-Fi network names to apps with location access. QuadStatus uses it to show the connected network's name — it never reads your location.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
