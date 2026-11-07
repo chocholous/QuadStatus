@@ -62,7 +62,9 @@ menu bar, on a light and a dark menu bar.
 | <img src="docs/preview/no-internet.png" width="280"> | **No internet** or Wi-Fi off, struck through. |
 | <img src="docs/preview/ethernet.png" width="280"> | **Ethernet** and other wired connections, a globe. |
 | <img src="docs/preview/hotspot.png" width="280"> | **iPhone Personal Hotspot**, green. |
-| <img src="docs/preview/vpn.png" width="280"> | **VPN up** turns the Wi-Fi glyph blue. |
+| <img src="docs/preview/vpn.png" width="280"> | **VPN up** turns the network glyph blue, whatever the connection: Wi-Fi… |
+| <img src="docs/preview/vpn-hotspot.png" width="280"> | …Personal Hotspot… |
+| <img src="docs/preview/vpn-ethernet.png" width="280"> | …or Ethernet. |
 
 ### Keyboard layout
 

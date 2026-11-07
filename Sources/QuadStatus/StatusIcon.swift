@@ -424,18 +424,19 @@ enum StatusIcon {
         stem.stroke()
     }
 
+    /// Over a VPN every network glyph turns blue, whatever the connection.
     private static func drawNetwork(_ state: NetworkState, _ base: NSColor) {
+        let vpn: NSColor? = state.vpn ? .systemBlue : nil
         switch state.kind {
         case .wired, .cellular, .other:
-            drawGlobe(online: state.online, base: base)
+            drawGlobe(online: state.online, base: vpn ?? base)
         case .wifi where state.hotspot:
-            // Green like the iPhone's hotspot indicator; blue wins over a VPN
-            drawHotspot(online: state.online, base: state.vpn ? .systemBlue : muted(.systemGreen))
+            // Green like the iPhone's hotspot indicator, unless a VPN makes it blue
+            drawHotspot(online: state.online, base: vpn ?? muted(.systemGreen))
         case .wifi, .offline:
-            // Over a VPN the Wi-Fi glyph turns blue
             drawWiFi(bars: state.bars, online: state.online,
                      slashed: !state.online || !state.wifiPowerOn,
-                     base: state.vpn ? .systemBlue : base)
+                     base: vpn ?? base)
         }
     }
 

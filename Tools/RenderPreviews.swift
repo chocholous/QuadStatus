@@ -67,6 +67,8 @@ let previews: [(String, StatusIcon.Model)] = [
     ("ethernet", model(network: network(.wired))),
     ("hotspot", model(network: network(hotspot: true))),
     ("vpn", model(network: network(vpn: true))),
+    ("vpn-hotspot", model(network: network(vpn: true, hotspot: true))),
+    ("vpn-ethernet", model(network: network(.wired, vpn: true))),
     ("keyboard-flag", model(input: .init(letter: "C", language: "cs"))),
     ("keyboard-letter", model(input: .init(letter: "D", language: "de"))),
 ]
