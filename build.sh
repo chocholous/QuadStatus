@@ -10,7 +10,9 @@ BUNDLE_ID="io.github.chocholous.quadstatus"
 VERSION="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
 
 # Universal, so the same bundle runs on Apple silicon and Intel.
-ARCHS=(--arch arm64 --arch x86_64)
+# QUADSTATUS_ARCHS narrows it, e.g. to "arm64" on a CI runner without Rosetta.
+ARCHS=()
+for arch in ${QUADSTATUS_ARCHS:-arm64 x86_64}; do ARCHS+=(--arch "$arch"); done
 
 if [[ "${1:-}" == "--icon" ]]; then
   echo "==> Generating Resources/AppIcon.icns"

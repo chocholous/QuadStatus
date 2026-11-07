@@ -28,7 +28,10 @@ jobs:
           queries: security-and-quality
 
       - name: Build the app
+        # The macOS 27 runner has no Rosetta, so the x86_64 half can't be built there.
         run: ./build.sh
+        env:
+          QUADSTATUS_ARCHS: arm64
 
       - name: Check the bundle
         run: |
