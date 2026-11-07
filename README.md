@@ -34,7 +34,7 @@ Not notarized, so the first launch is blocked: **System Settings → Privacy & S
 Or build it:
 
 ```bash
-./build.sh --install     # build and install to /Applications
+./build.sh --install     # build, install to ~/Applications, start at login
 ./build.sh --dmg         # build the disk image
 ```
 

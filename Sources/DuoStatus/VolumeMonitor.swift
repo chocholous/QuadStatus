@@ -4,6 +4,7 @@ struct VolumeState: Equatable {
     var available = false            // whether the default output device exposes a volume
     var level: Float = 0             // 0...1
     var muted = false
+    var headphones = false           // Bluetooth output, or the built-in jack
 
     var outputName = ""
     var inputName = ""
@@ -88,7 +89,8 @@ final class VolumeMonitor {
 
     private func attachDeviceListeners() {
         guard device != kAudioObjectUnknown else { return }
-        for selector in [virtualMainVolume, kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyMute] {
+        for selector in [virtualMainVolume, kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyMute,
+                         kAudioDevicePropertyDataSource] {
             var addr = address(selector)
             let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.refresh() }
             if AudioObjectAddPropertyListenerBlock(device, &addr, DispatchQueue.main, block) == noErr {
@@ -166,6 +168,7 @@ final class VolumeMonitor {
         s.muted = muteFlag() ?? (s.available && s.level <= 0.0001)
 
         s.outputName = name(of: device)
+        s.headphones = isHeadphones()
         let input = currentInput
         if input != kAudioObjectUnknown { s.inputName = name(of: input) }
         return s
@@ -183,6 +186,17 @@ final class VolumeMonitor {
         }
         guard !values.isEmpty else { return nil }
         return values.reduce(0, +) / Float(values.count)
+    }
+
+    /// Bluetooth devices count as headphones (a Bluetooth speaker does too, which
+    /// is close enough); built-in output counts once its data source is the jack.
+    private func isHeadphones() -> Bool {
+        let transport: UInt32? = read(kAudioDevicePropertyTransportType, from: device,
+                                      scope: kAudioObjectPropertyScopeGlobal)
+        if transport == kAudioDeviceTransportTypeBluetooth
+            || transport == kAudioDeviceTransportTypeBluetoothLE { return true }
+        let source: UInt32? = read(kAudioDevicePropertyDataSource, from: device)
+        return source == 0x6864706e      // 'hdpn'
     }
 
     private func muteFlag() -> Bool? {

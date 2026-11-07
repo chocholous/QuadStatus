@@ -31,6 +31,10 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSLocationUsageDescription</key>
+	<string>macOS only reveals Wi-Fi network names to apps with location access. DuoStatus uses it to show the connected network's name — it never reads your location.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>macOS only reveals Wi-Fi network names to apps with location access. DuoStatus uses it to show the connected network's name — it never reads your location.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

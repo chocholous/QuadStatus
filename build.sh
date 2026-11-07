@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds DuoStatus.app. Pass --install to drop it in /Applications and launch it.
+# Builds DuoStatus.app. Pass --install to drop it in ~/Applications, start it at login and launch it.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -39,6 +39,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # (.metadata_never_index only works at a volume root, not per directory.)
 cp "$BIN" "$APP/Contents/MacOS/$NAME"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+mkdir -p "$APP/Contents/Library/LaunchAgents"
+cp Resources/io.github.zhenweiding-dev.duostatus.plist "$APP/Contents/Library/LaunchAgents/"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
 echo "==> Signing (ad-hoc; fine for local use)"
@@ -61,16 +63,20 @@ if [[ "${1:-}" == "--dmg" ]]; then
 fi
 
 if [[ "${1:-}" == "--install" ]]; then
-  echo "==> Installing to /Applications"
-  pkill -x "$NAME" 2>/dev/null || true
-  rm -rf "/Applications/$NAME.app"
-  cp -R "$APP" "/Applications/$NAME.app"
+  DEST="$HOME/Applications/$NAME.app"
+  echo "==> Installing to $DEST"
+  pkill -x "$NAME" || true
+  mkdir -p "$HOME/Applications"
+  [[ -e "$DEST" ]] && /usr/bin/trash "$DEST"
+  ditto "$APP" "$DEST"
+  # Starts it at login (a LaunchAgent pointing at this copy; see LoginAgent.swift).
+  "$DEST/Contents/MacOS/$NAME" --register-login
   # Opening straight after replacing the bundle races LaunchServices (error -609),
   # so register it explicitly and give it a moment.
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-      -f "/Applications/$NAME.app" 2>/dev/null || true
+      -f "$DEST" || true
   sleep 1
-  open "/Applications/$NAME.app" || { sleep 2; open "/Applications/$NAME.app"; }
+  open "$DEST" || { sleep 2; open "$DEST"; }
   echo "Launched — look at the right side of the menu bar."
 else
   echo "Done: $APP"

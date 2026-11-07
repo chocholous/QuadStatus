@@ -9,3 +9,6 @@ build.noindex/
 # Editor and tooling
 .vscode/
 .claude/
+
+# Local build output
+build.log

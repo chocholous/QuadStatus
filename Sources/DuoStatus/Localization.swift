@@ -55,6 +55,7 @@ struct Strings {
     let battery: String
     let network: String
     let sound: String
+    let keyboard: String
 
     // Battery
     let health: (Int) -> String
@@ -64,6 +65,8 @@ struct Strings {
     let powerConnected: String
     let onBattery: (Int, Int) -> String
     let onBatteryEstimating: String
+    let timeLeft: (Int, Int) -> String
+    let timeToFull: (Int, Int) -> String
 
     // Network
     let notConnected: String
@@ -72,6 +75,15 @@ struct Strings {
     let cellular: String
     let connected: String
     let noInternet: String
+    let hotspot: String
+
+    // VPN
+    let connectTo: String
+    let openNordVPN: String
+
+    // Wi-Fi
+    let wifiSettings: String
+    let wifiAllowLocation: String
     let noResponse: String
     let measuring: String
 
@@ -99,6 +111,7 @@ extension Strings {
         battery: "Battery",
         network: "Network",
         sound: "Sound",
+        keyboard: "Keyboard",
         health: { "Health \($0)%" },
         cycles: { "\($0) cycles" },
         lowPowerMode: "Low Power Mode",
@@ -106,12 +119,19 @@ extension Strings {
         powerConnected: "Power connected",
         onBattery: { String(format: "On battery · %d:%02d left", $0, $1) },
         onBatteryEstimating: "On battery · estimating",
+        timeLeft: { String(format: "%d:%02d left", $0, $1) },
+        timeToFull: { String(format: "%d:%02d to full", $0, $1) },
         notConnected: "Not connected",
         wifiOff: "Wi-Fi off",
         ethernet: "Ethernet",
         cellular: "Cellular",
         connected: "Connected",
         noInternet: "No internet",
+        hotspot: "Personal Hotspot",
+        connectTo: "Connect to",
+        openNordVPN: "Open NordVPN…",
+        wifiSettings: "Wi-Fi Settings…",
+        wifiAllowLocation: "Allow Location Access to Show Network Name…",
         noResponse: " · No response",
         measuring: " · Measuring",
         volumeUnavailable: "Volume not adjustable here",
@@ -135,6 +155,7 @@ extension Strings {
         battery: "电池",
         network: "网络",
         sound: "声音",
+        keyboard: "键盘",
         health: { "健康度 \($0)%" },
         cycles: { "循环 \($0) 次" },
         lowPowerMode: "低电量模式",
@@ -142,12 +163,19 @@ extension Strings {
         powerConnected: "电源已接通",
         onBattery: { String(format: "电池供电 · 预计剩余 %d:%02d", $0, $1) },
         onBatteryEstimating: "电池供电 · 剩余时间计算中",
+        timeLeft: { String(format: "剩余 %d:%02d", $0, $1) },
+        timeToFull: { String(format: "%d:%02d 后充满", $0, $1) },
         notConnected: "未连接",
         wifiOff: "Wi-Fi 已关闭",
         ethernet: "以太网",
         cellular: "蜂窝数据",
         connected: "已连接",
         noInternet: "无法连接",
+        hotspot: "个人热点",
+        connectTo: "连接到",
+        openNordVPN: "打开 NordVPN…",
+        wifiSettings: "Wi-Fi 设置…",
+        wifiAllowLocation: "允许定位以显示网络名称…",
         noResponse: " · 无响应",
         measuring: " · 测量中",
         volumeUnavailable: "当前设备不支持音量控制",

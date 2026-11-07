@@ -1,6 +1,6 @@
 import AppKit
 import CoreAudio
-import ServiceManagement
+import CoreWLAN
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
@@ -9,10 +9,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let volume = VolumeMonitor()
     private let network = NetworkMonitor()
     private let throughput = ThroughputMeter()
+    private let keyboard = InputSourceMonitor()
+    private let wifi = WiFiAccess()
 
     private var pollTimer: Timer?
+    private var hoverTip: HoverTip?
+
+    /// AirPods battery shown next to the badge for a few seconds after connecting
+    private var budsNote: String?
+    private var budsNoteTimer: Timer?
+    private var hadHeadphones = false
+    private var budsBattery: BudsBattery?
+
+    /// CPU load from which the hover tip lists it
+    private static let tipCPULoad = 0.70
+
+    /// Under heavy CPU load or thermal pressure the battery arc breathes gently.
+    private let stress = StressMonitor()
+    private var pulseTimer: Timer?
+    private var pulseStart = Date()
+    private static let pulsePeriod: TimeInterval = 1.6
+    private static let pulseFPS: Double = 12       // the animation itself must stay cheap
+    private static let pulseFloor: CGFloat = 0.45  // dimmest point of a breath
     private var appearanceObservation: NSKeyValueObservation?
     private var renderedModel: StatusIcon.Model?
+    /// Pointer over the badge: the arc shows percent instead of time
+    private var hovering = false
     private var ping: PingResult?
     private var pinging = false
 
@@ -21,16 +43,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var liveTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LoginAgent.migrate()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.imagePosition = .imageOnly
         let menu = NSMenu()
         menu.delegate = self
         menu.autoenablesItems = false
         statusItem.menu = menu
+        if let button = statusItem.button {
+            hoverTip = HoverTip(button: button) { [weak self] in self?.tipLines() ?? [] }
+            hoverTip?.willShow = { [weak self] in self?.refreshBudsForTip() }
+            hoverTip?.onHover = { [weak self] in
+                self?.hovering = $0
+                self?.render()
+            }
+        }
 
         battery.onChange = { [weak self] in self?.render() }
-        volume.onChange = { [weak self] in self?.render() }
+        volume.onChange = { [weak self] in
+            self?.headphonesChanged()
+            self?.render()
+        }
         network.onChange = { [weak self] in self?.render() }
+        keyboard.onChange = { [weak self] in self?.render() }
+        stress.onChange = { [weak self] in self?.updatePulse() }
 
         // The icon isn't a template image, so it has to follow the menu bar
         // appearance itself.
@@ -52,7 +88,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         battery.refresh()
         volume.refresh()
         network.refresh()
+        keyboard.refresh()
+        stress.refresh()
         throughput.sample(interface: network.state.interfaceName)
+    }
+
+    private var pulseLevel: CGFloat {
+        guard pulseTimer != nil else { return 1 }
+        let t = Date().timeIntervalSince(pulseStart) / Self.pulsePeriod
+        let wave = (1 + cos(2 * .pi * t)) / 2              // 1 → 0 → 1 per period
+        return Self.pulseFloor + (1 - Self.pulseFloor) * CGFloat(wave)
+    }
+
+    private func updatePulse() {
+        if stress.stressed, pulseTimer == nil {
+            pulseStart = Date()
+            let timer = Timer(timeInterval: 1 / Self.pulseFPS, repeats: true) { [weak self] _ in
+                self?.render()
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            pulseTimer = timer
+        } else if !stress.stressed, let timer = pulseTimer {
+            timer.invalidate()
+            pulseTimer = nil
+            render(force: true)
+        }
+    }
+
+    /// On the switch to headphones, read their battery and show it briefly.
+    private func headphonesChanged() {
+        let now = volume.state.headphones
+        defer { hadHeadphones = now }
+        guard now, !hadHeadphones else { return }
+        AirPodsBattery.read(preferring: volume.state.outputName) { [weak self] battery in
+            guard let self, let battery, self.volume.state.headphones else { return }
+            self.budsBattery = battery
+            self.budsNote = battery.label
+            self.render(force: true)
+            self.budsNoteTimer?.invalidate()
+            self.budsNoteTimer = Timer.scheduledTimer(withTimeInterval: AirPodsBattery.displaySeconds,
+                                                      repeats: false) { [weak self] _ in
+                self?.budsNote = nil
+                self?.render(force: true)
+            }
+        }
     }
 
     /// Measured only while the menu is open. Skipped if one is still in flight
@@ -72,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// scheduled in the default mode never fire — hence the explicit `.common`.
     /// Stops on close: nobody is looking the rest of the time.
     func menuWillOpen(_ menu: NSMenu) {
+        hoverTip?.hide()
         tickLive()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.tickLive() }
         RunLoop.main.add(timer, forMode: .common)
@@ -96,21 +176,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let button = statusItem.button else { return }
         let model = StatusIcon.Model(battery: battery.state,
                                      volume: volume.state,
-                                     network: network.state)
+                                     network: network.state,
+                                     input: keyboard.shown.map { .init(letter: $0.letter, language: $0.language) },
+                                     note: budsNote,
+                                     label: arcLabel(battery.state),
+                                     pulse: pulseLevel)
         guard force || model != renderedModel else { return }
         renderedModel = model
 
         let image = StatusIcon.image(for: model, appearance: button.effectiveAppearance)
         button.image = image
         statusItem.length = image.size.width
+    }
 
-        // Row prefixes are carried by the menu's section headers; a tooltip has
-        // no such context, so it needs them spelled out.
-        let s = L.strings
-        button.toolTip = [(s.battery, batteryLine()), (s.network, networkLine()), (s.sound, soundLine())]
-            .filter { !$0.1.isEmpty }
-            .map { "\($0.0) \($0.1)" }
-            .joined(separator: "\n")
+    /// The number in the top of the battery arc: time left or to full as h:mm,
+    /// the percentage while hovered, while macOS is still estimating, or on power
+    /// but not charging. Past 9:59 it's whole hours, to stay inside the ring's cut.
+    private func arcLabel(_ b: BatteryState) -> String? {
+        guard b.present else { return nil }
+        let m = b.minutesRemaining
+        guard !hovering, m > 0, b.charging || !b.pluggedIn else { return "\(Int(round(b.level * 100)))" }
+        return m >= 600 ? "\(m / 60)h" : String(format: "%d:%02d", m / 60, m % 60)
+    }
+
+    /// Hover text, one fact per line: network name, VPN country while connected,
+    /// battery, AirPods (each bud and the case, when known), CPU when it's busy.
+    private func tipLines() -> [HoverTip.Line] {
+        let n = network.state, s = L.strings
+        var lines: [HoverTip.Line] = []
+        switch n.kind {
+        case .wifi where n.hotspot: lines.append(.init(text: s.hotspot))
+        case .wifi:                 lines.append(.init(text: CWWiFiClient.shared().interface()?.ssid() ?? "Wi-Fi"))
+        case .wired:                lines.append(.init(text: s.ethernet))
+        case .offline:              lines.append(.init(text: n.wifiPowerOn ? s.notConnected : s.wifiOff))
+        case .cellular, .other:     break
+        }
+        if n.vpn {
+            lines.append(.init(text: "VPN " + (NordVPN.lastCountry.map(NordVPN.displayName) ?? s.connected)))
+        }
+        let b = battery.state
+        if b.present {
+            // With the system battery icon hidden, time left / to full is the thing
+            // the percentage alone doesn't say. -1 while macOS is still estimating.
+            var text = "\(Int(round(b.level * 100))) %"
+            let m = b.minutesRemaining
+            if m > 0, b.charging { text += " · " + s.timeToFull(m / 60, m % 60) }
+            else if m > 0, !b.pluggedIn { text += " · " + s.timeLeft(m / 60, m % 60) }
+            lines.append(.init(symbol: "laptopcomputer", text: text))
+        }
+        if volume.state.headphones, let buds = budsBattery {
+            if let l = buds.left      { lines.append(.init(symbol: "airpodpro.left", text: "\(l) %")) }
+            if let r = buds.right     { lines.append(.init(symbol: "airpodpro.right", text: "\(r) %")) }
+            if let c = buds.caseLevel { lines.append(.init(symbol: "airpodspro.chargingcase.wireless", text: "\(c) %")) }
+        }
+        // Its menu bar icon is hidden too, so say when a Focus is silencing things
+        if let focus = FocusStatus.activeName() {
+            lines.append(.init(symbol: "moon.fill", text: focus))
+        }
+        if stress.load >= Self.tipCPULoad {
+            lines.append(.init(symbol: "cpu", text: "\(Int(round(stress.load * 100))) %"))
+        }
+        return lines
+    }
+
+    /// Fresh AirPods levels for the hover tip; it fills in when they arrive.
+    private func refreshBudsForTip() {
+        guard volume.state.headphones else { budsBattery = nil; return }
+        AirPodsBattery.read(preferring: volume.state.outputName) { [weak self] battery in
+            guard let self, let battery else { return }
+            self.budsBattery = battery
+            self.hoverTip?.refresh()
+        }
     }
 
     // MARK: - Menu
@@ -153,6 +289,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             [weak self] in self?.networkLine() ?? ""
         }
         live(menu, symbol: { "arrow.up.arrow.down" }) { [weak self] in self?.linkLine() ?? "" }
+        wifi.requestIfNeeded()
+        if !wifi.allowed {
+            let allow = NSMenuItem(title: s.wifiAllowLocation,
+                                   action: #selector(WiFiAccess.openLocationSettings), keyEquivalent: "")
+            allow.target = wifi
+            Self.apply(symbol: "location", to: allow)
+            menu.addItem(allow)
+        }
+        let settings = NSMenuItem(title: s.wifiSettings,
+                                  action: #selector(WiFiAccess.openWiFiSettings), keyEquivalent: "")
+        settings.target = wifi
+        Self.apply(symbol: "gearshape", to: settings)
+        menu.addItem(settings)
+
+        if NordVPN.installed {
+            menu.addItem(.sectionHeader(title: "VPN"))
+            live(menu, symbol: { [weak self] in
+                self?.network.state.vpn == true ? "lock.shield.fill" : "lock.open"
+            }) { [weak self] in self?.vpnLine() ?? "" }
+            menu.addItem(vpnCountryItem())
+            let open = NSMenuItem(title: s.openNordVPN, action: #selector(openNordVPN), keyEquivalent: "")
+            open.target = self
+            Self.apply(symbol: "arrow.up.forward.app", to: open)
+            menu.addItem(open)
+        }
 
         menu.addItem(.sectionHeader(title: s.sound))
         live(menu, symbol: { [weak self] in
@@ -161,11 +322,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(deviceItem(title: s.output, symbol: "hifispeaker.fill", scope: .output))
         menu.addItem(deviceItem(title: s.input, symbol: "mic.fill", scope: .input))
 
+        menu.addItem(.sectionHeader(title: s.keyboard))
+        menu.addItem(keyboardItem())
+
         menu.addItem(.separator())
         menu.addItem(languageItem())
 
         let login = NSMenuItem(title: s.openAtLogin, action: #selector(toggleLoginItem), keyEquivalent: "")
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        login.state = LoginAgent.isEnabled ? .on : .off
         login.target = self
         menu.addItem(login)
 
@@ -211,6 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let s = network.state
         switch s.kind {
         case .wired, .cellular, .other: return s.online ? "globe" : "globe.badge.chevron.backward"
+        case .wifi where s.hotspot: return "personalhotspot"
         case .wifi:    return s.online ? "wifi" : "wifi.exclamationmark"
         case .offline: return "wifi.slash"
         }
@@ -228,6 +393,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let item = NSMenuItem(title: L.strings.language, action: nil, keyEquivalent: "")
         item.submenu = submenu
+        return item
+    }
+
+    /// The active layout, with a submenu to switch — stands in for the system
+    /// input menu once that is hidden.
+    private func keyboardItem() -> NSMenuItem {
+        let submenu = NSMenu()
+        let currentID = keyboard.current?.id
+        for source in keyboard.selectable {
+            let entry = NSMenuItem(title: source.name,
+                                   action: #selector(selectInputSource(_:)), keyEquivalent: "")
+            entry.state = source.id == currentID ? .on : .off
+            entry.representedObject = source.id
+            entry.target = self
+            submenu.addItem(entry)
+        }
+        let item = NSMenuItem(title: keyboard.current?.name ?? "—", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        Self.apply(symbol: "keyboard", to: item)
+        return item
+    }
+
+    /// Countries to connect to, the current one ticked. NordVPN takes a while to
+    /// switch, so the tick follows on the next menu open.
+    private func vpnCountryItem() -> NSMenuItem {
+        let submenu = NSMenu()
+        let current = network.state.vpn ? NordVPN.lastCountry : nil
+        for code in NordVPN.countries {
+            let entry = NSMenuItem(title: NordVPN.displayName(code),
+                                   action: #selector(connectVPN(_:)), keyEquivalent: "")
+            entry.state = code == current ? .on : .off
+            entry.representedObject = code
+            entry.target = self
+            submenu.addItem(entry)
+        }
+        let item = NSMenuItem(title: L.strings.connectTo, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        Self.apply(symbol: "globe.europe.africa", to: item)
         return item
     }
 
@@ -318,6 +521,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return s.onBattery(b.minutesRemaining / 60, b.minutesRemaining % 60)
     }
 
+    private func vpnLine() -> String {
+        let n = network.state, s = L.strings
+        guard n.vpn else { return s.notConnected }
+        var parts = [s.connected]
+        if let country = NordVPN.lastCountry { parts.append(NordVPN.displayName(country)) }
+        if !n.tunnelAddress.isEmpty { parts.append(n.tunnelAddress) }
+        return parts.joined(separator: " · ")
+    }
+
     private func networkLine() -> String {
         let n = network.state, s = L.strings
         let state = n.online ? s.connected : s.noInternet
@@ -326,7 +538,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .wired:    return "\(s.ethernet) · \(state)"
         case .cellular: return s.cellular
         case .other:    return state
-        case .wifi:     return "Wi-Fi · \(state)"
+        case .wifi:
+            // The SSID needs Location access; without it, fall back to "Wi-Fi"
+            let name = n.hotspot ? s.hotspot : (CWWiFiClient.shared().interface()?.ssid() ?? "Wi-Fi")
+            return "\(name) · \(state)"
         }
     }
 
@@ -367,6 +582,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         render(force: true)          // refreshes the tooltip; the menu rebuilds on open
     }
 
+    @objc private func selectInputSource(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? String { keyboard.select(id: id) }
+    }
+
+    @objc private func connectVPN(_ sender: NSMenuItem) {
+        if let code = sender.representedObject as? String { NordVPN.connect(country: code) }
+    }
+
+    @objc private func openNordVPN() { NordVPN.openApp() }
+
     @objc private func selectOutput(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? AudioDeviceID { volume.selectOutput(id) }
     }
@@ -377,10 +602,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleLoginItem() {
         do {
-            if SMAppService.mainApp.status == .enabled {
-                try SMAppService.mainApp.unregister()
+            if LoginAgent.isEnabled {
+                try LoginAgent.disable()
             } else {
-                try SMAppService.mainApp.register()
+                try LoginAgent.enable()
             }
         } catch {
             let alert = NSAlert()
