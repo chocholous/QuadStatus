@@ -21,8 +21,7 @@ final class InputSourceMonitor {
     /// switch away from it does. That is the first layout enabled in System
     /// Settings, unless overridden with
     /// `defaults write io.github.chocholous.quadstatus defaultKeyboardLanguage -string en`
-    /// Resolved on every layout switch rather than on every redraw: the badge
-    /// redraws many times a second while it pulses.
+    /// Resolved on every layout switch rather than on every redraw.
     private(set) var defaultLanguage = ""
 
     /// The current layout, or nil while it is the default one.

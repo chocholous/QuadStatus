@@ -25,11 +25,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let tipCPULoad = 0.70
 
     /// Under heavy CPU load or thermal pressure the battery arc breathes gently.
+    /// The ring then lives in two layers over the button whose opacity Core
+    /// Animation fades out of process: the app does no work per frame, which
+    /// matters because it pulses exactly when the CPU is busiest. (Redrawing the
+    /// image 12× a second cost ~10 % CPU, pre-rendered frames ~7 %, this ~0 %.)
     private let stress = StressMonitor()
-    private var pulseTimer: Timer?
-    private var pulseStart = Date()
+    private var pulseLayers: (track: CALayer, fill: CALayer)?
     private static let pulsePeriod: TimeInterval = 1.6
-    private static let pulseFPS: Double = 12       // the animation itself must stay cheap
     private static let pulseFloor: CGFloat = 0.45  // dimmest point of a breath
     private var appearanceObservation: NSKeyValueObservation?
     private var renderedModel: StatusIcon.Model?
@@ -93,26 +95,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         throughput.sample(interface: network.state.interfaceName)
     }
 
-    private var pulseLevel: CGFloat {
-        guard pulseTimer != nil else { return 1 }
-        let t = Date().timeIntervalSince(pulseStart) / Self.pulsePeriod
-        let wave = (1 + cos(2 * .pi * t)) / 2              // 1 → 0 → 1 per period
-        return Self.pulseFloor + (1 - Self.pulseFloor) * CGFloat(wave)
-    }
-
     private func updatePulse() {
-        if stress.stressed, pulseTimer == nil {
-            pulseStart = Date()
-            let timer = Timer(timeInterval: 1 / Self.pulseFPS, repeats: true) { [weak self] _ in
-                self?.render()
-            }
-            RunLoop.main.add(timer, forMode: .common)
-            pulseTimer = timer
-        } else if !stress.stressed, let timer = pulseTimer {
-            timer.invalidate()
-            pulseTimer = nil
+        if stress.stressed, pulseLayers == nil, let button = statusItem.button {
+            button.wantsLayer = true
+            guard let host = button.layer else { return }
+            // The empty track breathes along, but only a fraction as deep as the fill
+            let trackFloor = 1 - (1 - Self.pulseFloor) * StatusIcon.M.trackPulseShare
+            let layers = (track: Self.breathingLayer(floor: trackFloor),
+                          fill: Self.breathingLayer(floor: Self.pulseFloor))
+            host.addSublayer(layers.track)
+            host.addSublayer(layers.fill)
+            pulseLayers = layers
+            render(force: true)
+        } else if !stress.stressed, let layers = pulseLayers {
+            layers.track.removeFromSuperlayer()
+            layers.fill.removeFromSuperlayer()
+            pulseLayers = nil
             render(force: true)
         }
+    }
+
+    /// A layer whose opacity eases 1 → floor → 1 once per pulse period, forever.
+    private static func breathingLayer(floor: CGFloat) -> CALayer {
+        let layer = CALayer()
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1.0
+        fade.toValue = floor
+        fade.duration = pulsePeriod / 2
+        fade.autoreverses = true
+        fade.repeatCount = .infinity
+        fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)  // close to the old cosine
+        layer.add(fade, forKey: "breath")
+        return layer
     }
 
     /// On the switch to headphones, read their battery and show it briefly.
@@ -179,14 +193,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                      network: network.state,
                                      input: keyboard.shown.map { .init(letter: $0.letter, language: $0.language) },
                                      note: budsNote,
-                                     label: arcLabel(battery.state),
-                                     pulse: pulseLevel)
+                                     label: arcLabel(battery.state))
         guard force || model != renderedModel else { return }
         renderedModel = model
 
-        let image = StatusIcon.image(for: model, appearance: button.effectiveAppearance)
+        let appearance = button.effectiveAppearance
+        guard let layers = pulseLayers else {
+            let image = StatusIcon.image(for: model, appearance: appearance)
+            button.image = image
+            statusItem.length = image.size.width
+            return
+        }
+        // Pulsing: the button shows everything but the ring, and the ring's two
+        // parts go into the breathing layers on top, at the same spot.
+        let image = StatusIcon.image(for: model, appearance: appearance, parts: .base)
         button.image = image
         statusItem.length = image.size.width
+        let scale = button.window?.backingScaleFactor ?? 2
+        let frame = NSRect(x: (button.bounds.width - image.size.width) / 2,
+                           y: (button.bounds.height - image.size.height) / 2,
+                           width: image.size.width, height: image.size.height)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)   // no implicit fade when the content changes
+        for (layer, part) in [(layers.track, StatusIcon.Parts.track), (layers.fill, .fill)] {
+            let partImage = StatusIcon.image(for: model, appearance: appearance, parts: part)
+            layer.contentsScale = scale
+            layer.contents = partImage.layerContents(forContentsScale: scale)
+            layer.frame = frame
+        }
+        CATransaction.commit()
     }
 
     /// The number in the top of the battery arc: time left or to full as h:mm,

@@ -144,7 +144,18 @@ enum StatusIcon {
         }
     }
 
-    static func image(for model: Model, appearance: NSAppearance) -> NSImage {
+    /// Which parts of the badge to draw. While it pulses the battery ring is split
+    /// off into its own layers (empty track, and fill + digits) that Core Animation
+    /// fades on its own, so the image never has to be redrawn per frame.
+    struct Parts: OptionSet {
+        let rawValue: Int
+        static let base  = Parts(rawValue: 1 << 0)   // everything except the battery ring
+        static let track = Parts(rawValue: 1 << 1)   // the ring's empty track
+        static let fill  = Parts(rawValue: 1 << 2)   // the ring's fill and the digits in it
+        static let all: Parts = [.base, .track, .fill]
+    }
+
+    static func image(for model: Model, appearance: NSAppearance, parts: Parts = .all) -> NSImage {
         // The keyboard letter sits to the right of the badge, in a smaller cut of
         // the menu bar's own font, dropped towards the badge's lower half
         let font = NSFont.menuBarFont(ofSize: NSFont.menuBarFont(ofSize: 0).pointSize * M.letterScale)
@@ -164,7 +175,10 @@ enum StatusIcon {
         let image = NSImage(size: NSSize(width: width, height: M.height), flipped: false) { _ in
             appearance.performAsCurrentDrawingAppearance {
                 let base = NSColor.labelColor
-                if let b = model.battery, b.present { drawRing(b, base, pulse: model.pulse, label: model.label) }
+                if let b = model.battery, b.present, !parts.isDisjoint(with: [.track, .fill]) {
+                    drawRing(b, base, pulse: model.pulse, label: model.label, parts: parts)
+                }
+                guard parts.contains(.base) else { return }
                 if let v = model.volume { drawVolumeDots(v, base) }
                 if let flag { drawFlagBand(flag) }
                 if let n = model.network { drawNetwork(n, base) }
@@ -293,7 +307,8 @@ enum StatusIcon {
 
     // MARK: - Top block: battery
 
-    private static func drawRing(_ state: BatteryState, _ base: NSColor, pulse: CGFloat, label: String?) {
+    private static func drawRing(_ state: BatteryState, _ base: NSColor, pulse: CGFloat, label: String?,
+                                 parts: Parts = .all) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let fill = color(for: state, base: base)
         let ink = fill.withAlphaComponent(fill.alphaComponent * pulse)
@@ -317,7 +332,10 @@ enum StatusIcon {
 
         // The empty track breathes along, but only a fraction as deep as the fill
         let trackPulse = 1 - (1 - pulse) * M.trackPulseShare
-        ringArc(M.ringStart, M.ringEnd, around: gap, color: base.withAlphaComponent(M.dim * trackPulse))
+        if parts.contains(.track) {
+            ringArc(M.ringStart, M.ringEnd, around: gap, color: base.withAlphaComponent(M.dim * trackPulse))
+        }
+        guard parts.contains(.fill) else { return }
 
         let level = max(0, min(1, state.level))
         if level > 0 { ringArc(M.ringStart, M.ringStart - M.arcSpan * level, around: gap, color: ink) }
